@@ -14,10 +14,15 @@ from cookie import Cookie
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--file-path',
+                        type=lambda f: check_file(parser, f),
                         default='~/Library/Cookies/Cookies.binarycookies',
                         help='The full path to Cookies.binarycookies')
-    parser.add_argument('-u', '--url', type=str,
-                        help='Filter for the given URL')
+    parser.add_argument('-u', '--in-url',
+                        help='Filter for URL anywhere in cookie domain name')
+    parser.add_argument('-U', '--url',
+                        help='Filter for the exact URL')
+    parser.add_argument('-n', '--name',
+                        help='Filter for the exact cookie name')
     parser.add_argument('-o', '--output-format', choices=['text', 'json'],
                         default='text', help='The output format for cookies.')
 
@@ -25,8 +30,12 @@ def main():
     expanded_path = os.path.expanduser(args.file_path)
     with open(expanded_path, 'rb') as binary_file:
         cookies = parse_cookies(binary_file)
+        if args.in_url is not None:
+            cookies = filter(lambda c: args.in_url in c.url, cookies)
         if args.url is not None:
-            cookies = filter(lambda c: args.url in c.url, cookies)
+            cookies = filter(lambda c: args.url == c.url, cookies)
+        if args.name is not None:
+            cookies = filter(lambda c: args.name == c.name, cookies)
 
         if args.output_format == 'text':
             for cookie in cookies:
@@ -34,6 +43,15 @@ def main():
         elif args.output_format == 'json':
             json_cookies = map(lambda c: c.to_dict(), cookies)
             print(json.dumps(list(json_cookies)))
+
+
+def check_file(parser, file_path):
+    expanded_path = os.path.expanduser(file_path)
+    if not os.path.exists(expanded_path):
+        parser.error("File not found: {}".format(expanded_path))
+    elif not os.path.isfile(expanded_path):
+        parser.error("Not a file: {}".format(expanded_path))
+    return expanded_path
 
 
 def parse_cookies(binary_file):
