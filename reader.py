@@ -16,8 +16,10 @@ def main():
     parser.add_argument('-f', '--file-path',
                         default='~/Library/Cookies/Cookies.binarycookies',
                         help='The full path to Cookies.binarycookies')
-    parser.add_argument('-u', '--url', type=str, help='Filter for the given URL')
-    parser.add_argument('-o', '--output-format', choices=['text', 'json'], default='text', help='The output format for cookies.')
+    parser.add_argument('-u', '--url', type=str,
+                        help='Filter for the given URL')
+    parser.add_argument('-o', '--output-format', choices=['text', 'json'],
+                        default='text', help='The output format for cookies.')
 
     args = parser.parse_args()
     expanded_path = os.path.expanduser(args.file_path)
@@ -41,38 +43,51 @@ def parse_cookies(binary_file):
         print("Not a Cookies.binarycookie file")
         sys.exit(1)
 
-    num_pages = unpack('>i', binary_file.read(4))[0]  # Number of pages in the binary file: 4 bytes
+    # Number of pages in the binary file: 4 bytes
+    num_pages = unpack('>i', binary_file.read(4))[0]
 
     page_sizes = []
     for np in range(num_pages):
-        page_sizes.append(unpack('>i', binary_file.read(4))[0])  # Each page size: 4 bytes*number of pages
+        # Each page size: 4 bytes*number of pages
+        page_sizes.append(unpack('>i', binary_file.read(4))[0])
 
     pages = []
     for ps in page_sizes:
-        pages.append(binary_file.read(ps))  # Grab individual pages and each page will contain >= one cookie
+        # Grab individual pages and each page will contain >= one cookie
+        pages.append(binary_file.read(ps))
 
     cookies = []
 
     for page in pages:
-        page = BytesIO(page)  # Converts the string to a file. So that we can use read/write operations easily.
+        # Converts the string to a file. So that we can use read/write
+        # operations easily.
+        page = BytesIO(page)
         page.read(4)  # page header: 4 bytes: Always 00000100
-        num_cookies = unpack('<i', page.read(4))[0]  # Number of cookies in each page, first 4 bytes after the page header in every page.
+        # Number of cookies in each page, first 4 bytes after the page header
+        # in every page.
+        num_cookies = unpack('<i', page.read(4))[0]
 
         cookie_offsets = []
         for nc in range(num_cookies):
-            cookie_offsets.append(unpack('<i', page.read(4))[0])  # Every page contains >= one cookie. Fetch cookie starting point from page starting byte
+            # Every page contains >= one cookie. Fetch cookie starting point
+            # from page starting byte
+            cookie_offsets.append(unpack('<i', page.read(4))[0])
 
         page.read(4)  # end of page header: Always 00000000
 
         cookie = ''
         for offset in cookie_offsets:
-            page.seek(offset)  # Move the page pointer to the cookie starting point
-            cookiesize = unpack('<i', page.read(4))[0]  # fetch cookie size
-            cookie = BytesIO(page.read(cookiesize))  # read the complete cookie
+            # Move page pointer to the cookie starting point
+            page.seek(offset)
+            # fetch cookie size
+            cookiesize = unpack('<i', page.read(4))[0]
+            # read the complete cookie
+            cookie = BytesIO(page.read(cookiesize))
 
             cookie.read(4)  # unknown
 
-            flags = unpack('<i', cookie.read(4))[0]  # Cookie flags:  1=secure, 4=httponly, 5=secure+httponly
+            # Cookie flags:  1=secure, 4=httponly, 5=secure+httponly
+            flags = unpack('<i', cookie.read(4))[0]
             cookie_flags = ''
             if flags == 0:
                 cookie_flags = ''
@@ -87,19 +102,29 @@ def parse_cookies(binary_file):
 
             cookie.read(4)  # unknown
 
-            urloffset = unpack('<i', cookie.read(4))[0]  # cookie domain offset from cookie starting point
-            nameoffset = unpack('<i', cookie.read(4))[0]  # cookie name offset from cookie starting point
-            pathoffset = unpack('<i', cookie.read(4))[0]  # cookie path offset from cookie starting point
-            valueoffset = unpack('<i', cookie.read(4))[0]  # cookie value offset from cookie starting point
+            # cookie domain offset from cookie starting point
+            urloffset = unpack('<i', cookie.read(4))[0]
+            # cookie name offset from cookie starting point
+            nameoffset = unpack('<i', cookie.read(4))[0]
+            # cookie path offset from cookie starting point
+            pathoffset = unpack('<i', cookie.read(4))[0]
+            # cookie value offset from cookie starting point
+            valueoffset = unpack('<i', cookie.read(4))[0]
 
             endofcookie = cookie.read(8)  # end of cookie
 
-            expiry_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200  # Expiry date is in Mac epoch format: Starts from 1/Jan/2001
-            expiry_date = strftime("%a, %d %b %Y ", gmtime(expiry_date_epoch))[:-1]  # 978307200 is unix epoch of  1/Jan/2001 //[:-1] strips the last space
+            # Expiry date is in Mac epoch format: Starts from 1/Jan/2001
+            expiry_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200
+            # 978307200 is unix epoch of  1/Jan/2001
+            # [:-1] strips the last space
+            expiry_date = strftime("%a, %d %b %Y ",
+                                   gmtime(expiry_date_epoch))[:-1]
 
-            create_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200  # Cookies creation time
-            create_date = strftime("%a, %d %b %Y ", gmtime(create_date_epoch))[:-1]
-            #print(create_date)
+            # Cookies creation time
+            create_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200
+            create_date = strftime("%a, %d %b %Y ",
+                                   gmtime(create_date_epoch))[:-1]
+            # print(create_date)
 
             cookie.seek(urloffset - 4)  # fetch domaain value from url offset
             url = ''
@@ -122,14 +147,18 @@ def parse_cookies(binary_file):
                 path = path + pa.decode()
                 pa = cookie.read(1)
 
-            cookie.seek(valueoffset - 4)  # fetch cookie value from value offset
+            # fetch cookie value from value offset
+            cookie.seek(valueoffset - 4)
             value = ''
             va = cookie.read(1)
             while unpack('<b', va)[0] != 0:
                 value = value + va.decode()
                 va = cookie.read(1)
 
-            cookies.append(Cookie(name=name, value=value, url=url, path=path, expiry_date=expiry_date, cookie_flags=cookie_flags))
+            cookies.append(Cookie(
+                name=name, value=value, url=url, path=path,
+                expiry_date=expiry_date, cookie_flags=cookie_flags,
+            ))
 
     return cookies
 
