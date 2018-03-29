@@ -2,11 +2,11 @@
 
 from io import BytesIO
 from struct import unpack
-from time import strftime, gmtime
 import argparse
 import json
 import os
 import sys
+import time
 
 from cookie import Cookie
 
@@ -17,19 +17,25 @@ def main():
                         type=lambda f: check_file(parser, f),
                         default='~/Library/Cookies/Cookies.binarycookies',
                         help='The full path to Cookies.binarycookies')
+    parser.add_argument('-e', '--expired', action='store_true',
+                        help='Include expired cookies in output')
     parser.add_argument('-u', '--in-url',
                         help='Filter for URL anywhere in cookie domain name')
     parser.add_argument('-U', '--url',
                         help='Filter for the exact URL')
     parser.add_argument('-n', '--name',
                         help='Filter for the exact cookie name')
-    parser.add_argument('-o', '--output-format', choices=['text', 'json'],
-                        default='text', help='The output format for cookies.')
+    parser.add_argument('-o', '--output-format', default='text',
+                        choices=['text', 'json', 'json-more'],
+                        help='The output format for cookies.')
 
     args = parser.parse_args()
     expanded_path = os.path.expanduser(args.file_path)
     with open(expanded_path, 'rb') as binary_file:
         cookies = parse_cookies(binary_file)
+        if args.expired is False:
+            now = time.time()
+            cookies = filter(lambda c: not c.expired_by_time(now), cookies)
         if args.in_url is not None:
             cookies = filter(lambda c: args.in_url in c.url, cookies)
         if args.url is not None:
@@ -40,8 +46,9 @@ def main():
         if args.output_format == 'text':
             for cookie in cookies:
                 print(cookie)
-        elif args.output_format == 'json':
-            json_cookies = map(lambda c: c.to_dict(), cookies)
+        elif args.output_format == 'json' or args.output_format == 'json-more':
+            more = args.output_format.endswith('more')
+            json_cookies = map(lambda c: c.to_dict(more=more), cookies)
             print(json.dumps(list(json_cookies)))
 
 
@@ -132,17 +139,11 @@ def parse_cookies(binary_file):
             endofcookie = cookie.read(8)  # end of cookie
 
             # Expiry date is in Mac epoch format: Starts from 1/Jan/2001
-            expiry_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200
             # 978307200 is unix epoch of  1/Jan/2001
-            # [:-1] strips the last space
-            expiry_date = strftime("%a, %d %b %Y ",
-                                   gmtime(expiry_date_epoch))[:-1]
+            expiry_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200
 
             # Cookies creation time
             create_date_epoch = unpack('<d', cookie.read(8))[0] + 978307200
-            create_date = strftime("%a, %d %b %Y ",
-                                   gmtime(create_date_epoch))[:-1]
-            # print(create_date)
 
             cookie.seek(urloffset - 4)  # fetch domaain value from url offset
             url = ''
@@ -175,7 +176,8 @@ def parse_cookies(binary_file):
 
             cookies.append(Cookie(
                 name=name, value=value, url=url, path=path,
-                expiry_date=expiry_date, cookie_flags=cookie_flags,
+                create_epoch=create_date_epoch, expiry_epoch=expiry_date_epoch,
+                cookie_flags=cookie_flags,
             ))
 
     return cookies
