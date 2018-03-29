@@ -4,8 +4,11 @@ from io import BytesIO
 from struct import unpack
 from time import strftime, gmtime
 import argparse
+import json
 import os
 import sys
+
+from cookie import Cookie
 
 
 def main():
@@ -13,17 +16,28 @@ def main():
     parser.add_argument('-f', '--file-path',
                         default='~/Library/Cookies/Cookies.binarycookies',
                         help='The full path to Cookies.binarycookies')
+    parser.add_argument('-u', '--url', type=str, help='Filter for the given URL')
+    parser.add_argument('-o', '--output-format', choices=['text', 'json'], default='text', help='The output format for cookies.')
 
     args = parser.parse_args()
     expanded_path = os.path.expanduser(args.file_path)
     with open(expanded_path, 'rb') as binary_file:
-        parse_cookies(binary_file)
+        cookies = parse_cookies(binary_file)
+        if args.url is not None:
+            cookies = filter(lambda c: args.url in c.url, cookies)
+
+        if args.output_format == 'text':
+            for cookie in cookies:
+                print(cookie)
+        elif args.output_format == 'json':
+            json_cookies = map(lambda c: c.to_dict(), cookies)
+            print(json.dumps(list(json_cookies)))
 
 
 def parse_cookies(binary_file):
     file_header = binary_file.read(4)  # File Magic String:cook
 
-    if file_header.decode() != 'cook':
+    if file_header != b'cook':
         print("Not a Cookies.binarycookie file")
         sys.exit(1)
 
@@ -36,6 +50,8 @@ def parse_cookies(binary_file):
     pages = []
     for ps in page_sizes:
         pages.append(binary_file.read(ps))  # Grab individual pages and each page will contain >= one cookie
+
+    cookies = []
 
     for page in pages:
         page = BytesIO(page)  # Converts the string to a file. So that we can use read/write operations easily.
@@ -113,7 +129,9 @@ def parse_cookies(binary_file):
                 value = value + va.decode()
                 va = cookie.read(1)
 
-            print('Cookie : ' + name + '=' + value + '; domain=' + url + '; path=' + path + '; ' + 'expires=' + expiry_date + '; ' + cookie_flags)
+            cookies.append(Cookie(name=name, value=value, url=url, path=path, expiry_date=expiry_date, cookie_flags=cookie_flags))
+
+    return cookies
 
 
 if __name__ == '__main__':
