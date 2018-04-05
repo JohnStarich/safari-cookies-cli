@@ -2,11 +2,11 @@
 
 from io import BytesIO
 from struct import unpack
+from time import strftime, gmtime, time
 import argparse
 import json
 import os
 import sys
-from time import strftime, gmtime, time
 
 
 def main():
@@ -41,6 +41,11 @@ def main():
         if args.name is not None:
             cookies = filter(lambda c: args.name == c.name, cookies)
 
+        cookies = check_empty_iter(cookies)
+        if next(cookies) is True:
+            print("No cookies found", file=sys.stderr)
+            sys.exit(1)
+
         if args.output_format == 'text':
             for cookie in cookies:
                 print(cookie)
@@ -50,6 +55,7 @@ def main():
             print(json.dumps(list(json_cookies)))
 
 
+
 def check_file(parser, file_path):
     expanded_path = os.path.expanduser(file_path)
     if not os.path.exists(expanded_path):
@@ -57,6 +63,29 @@ def check_file(parser, file_path):
     elif not os.path.isfile(expanded_path):
         parser.error("Not a file: {}".format(expanded_path))
     return expanded_path
+
+
+def check_empty_iter(iterable):
+    """
+    Checks to see if this (lazy) iterable contains any elements.
+    Consumes the first element to check, then does one of the following:
+      * Yields True if it does, followed by all of the elements.
+      * Yields False if it does not contain any elements.
+
+    Recommended usage:
+    >>> seq = check_empty_iter(seq)
+    >>> if next(seq) is True:
+    >>>     print("Empty!")
+    """
+    iterator = iter(iterable)
+    try:
+        next_item = next(iterator)
+        yield False
+        yield next_item
+        for item in iterator:
+            yield item
+    except StopIteration:
+        yield True
 
 
 def parse_cookies(binary_file):
